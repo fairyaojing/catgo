@@ -185,6 +185,7 @@
           <button class="btn-ctrl" onclick="Game.undo()">悔棋 ↩</button>
           <button class="btn-ctrl" onclick="Game.resign()">认输 🏳</button>
           <button class="btn-ctrl btn-hint" onclick="Game.requestHint()">提示 💡</button>
+          <button class="btn-ctrl btn-end-game" onclick="Game.endGame()">结束棋局 🏁</button>
         </div>
         <div class="difficulty-badge" id="game-difficulty-badge">难度 5</div>
         <button class="btn-ghost btn-sm" onclick="App.showScreen('screen-start')">← 主页</button>
@@ -195,6 +196,30 @@
     <div class="comment-panel" id="comment-wrap">
       <span class="comment-icon" id="comment-icon">💬</span>
       <span class="move-comment-text" id="move-comment">落子后将显示评语...</span>
+    </div>
+
+    <!-- 移动端底部操作栏（仅小屏显示） -->
+    <div class="mobile-action-bar" id="mobile-action-bar">
+      <button class="mob-btn" onclick="Game.pass()">
+        <span class="mob-btn-icon">⏭</span>
+        <span class="mob-btn-label">虚手</span>
+      </button>
+      <button class="mob-btn" onclick="Game.undo()">
+        <span class="mob-btn-icon">↩</span>
+        <span class="mob-btn-label">悔棋</span>
+      </button>
+      <button class="mob-btn mob-btn-end" onclick="Game.resign()">
+        <span class="mob-btn-icon">🏁</span>
+        <span class="mob-btn-label">结束棋局</span>
+      </button>
+      <button class="mob-btn" onclick="Game.requestHint()">
+        <span class="mob-btn-icon">💡</span>
+        <span class="mob-btn-label">提示</span>
+      </button>
+      <button class="mob-btn mob-btn-home" onclick="App.showScreen('screen-start')">
+        <span class="mob-btn-icon">🏠</span>
+        <span class="mob-btn-label">主页</span>
+      </button>
     </div>
 
   </div>
