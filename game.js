@@ -241,16 +241,22 @@ const Game = {
     }
   },
 
-  resign() {
-    if (this.engine.gameOver) return;
-    this.engine.gameOver = true;
-    // 记录 AI 获胜
-    this.ai.recordResult(true);
-    const winner = this.playerColor === 1 ? '白方 (AI)' : '黑方';
-    this._showOverlay(`${winner} 获胜`, '对方认输，游戏结束。');
-  },
+resign() {
+if (this.engine.gameOver) return;
+this.engine.gameOver = true;
+// 记录 AI 获胜
+this.ai.recordResult(true);
+const winner = this.playerColor === 1 ? '白方 (AI)' : '黑方';
+this._showOverlay(`${winner} 获胜`, '对方认输，游戏结束。');
+},
 
-  requestHint() {
+endGame() {
+if (this.engine.gameOver) return;
+this.engine.gameOver = true;
+this._showGameOver();
+},
+
+requestHint()
     if (this.isAITurn || this.engine.gameOver) return;
     if (this.engine.turn !== this.playerColor) return;
 
