@@ -1,34 +1,44 @@
 /**
- * ai.js — 强化版围棋 AI 引擎 v2.0
- * 核心改进：
- * 1. 真正的围棋策略（星位布局、死活、征子、连接、地盘评估）
- * 2. 自适应难度（保障 AI 胜率 ≥ 45%）
- * 3. 落子评语生成
- * 4. 快速胜率估算
+ * ai.js — 指导棋 AI 引擎 v3.0
+ * 设计目标：
+ * 1. AI 始终保持指导棋水平，玩家胜率不超过 45%
+ * 2. 即使玩家赢棋，差距不超过 3 目（精准控分）
+ * 3. 自适应：玩家连赢时 AI 自动加强，连输时适度放水
+ * 4. 终局追分：检测到玩家领先 >3 目时触发强力收官
  */
 class GoAI {
   constructor(difficulty = 5) {
     this.difficulty = Math.max(1, Math.min(10, difficulty));
-    this._winHistory = [];   // 近期胜负记录（用于自适应）
-    this._adaptiveBoost = 0; // 自适应加成
+    this._winHistory = [];    // 近期胜负记录
+    this._adaptiveBoost = 1.5; // 初始加成（AI 默认比设定难度强 1.5 级）
+    this._playerLeadHistory = []; // 玩家领先目数历史
   }
 
   setDifficulty(d) {
     this.difficulty = Math.max(1, Math.min(10, d));
     this._winHistory = [];
-    this._adaptiveBoost = 0;
+    this._adaptiveBoost = 1.5;
+    this._playerLeadHistory = [];
   }
 
   // 记录胜负，用于自适应调整
-  recordResult(aiWon) {
+  // 目标：AI 胜率维持在 55%~75%，玩家赢时差距 ≤3 目
+  recordResult(aiWon, scoreDiff = 0) {
     this._winHistory.push(aiWon ? 1 : 0);
-    if (this._winHistory.length > 10) this._winHistory.shift();
+    if (this._winHistory.length > 8) this._winHistory.shift();
     const recentWinRate = this._winHistory.reduce((a, b) => a + b, 0) / this._winHistory.length;
-    // 如果 AI 胜率低于 45%，增加加成
-    if (recentWinRate < 0.45 && this._winHistory.length >= 3) {
-      this._adaptiveBoost = Math.min(3, this._adaptiveBoost + 0.5);
-    } else if (recentWinRate > 0.65) {
-      this._adaptiveBoost = Math.max(0, this._adaptiveBoost - 0.3);
+
+    if (this._winHistory.length >= 2) {
+      if (recentWinRate < 0.55) {
+        // 玩家赢太多：大幅加强 AI
+        this._adaptiveBoost = Math.min(4, this._adaptiveBoost + 0.8);
+      } else if (recentWinRate < 0.65) {
+        // 玩家胜率在 35%~45%：小幅加强
+        this._adaptiveBoost = Math.min(4, this._adaptiveBoost + 0.3);
+      } else if (recentWinRate > 0.85) {
+        // AI 赢太多：稍微放水，让游戏有趣
+        this._adaptiveBoost = Math.max(0.5, this._adaptiveBoost - 0.4);
+      }
     }
   }
 
@@ -43,13 +53,22 @@ class GoAI {
     const thinkTime = 200 + this.difficulty * 60;
     await this._sleep(thinkTime);
 
-    const effectiveDiff = Math.min(10, this.difficulty + this._adaptiveBoost);
-    let move;
+    // 有效难度 = 设定难度 + 自适应加成，最低保底 4（确保 AI 始终有基本策略）
+    const effectiveDiff = Math.min(10, Math.max(4, this.difficulty + this._adaptiveBoost));
 
-    if (effectiveDiff <= 2) {
-      move = this._randomWithCapture(engine, legalMoves, 0.3);
-    } else if (effectiveDiff <= 4) {
-      move = this._heuristicMove(engine, legalMoves, 0.5);
+    // 检测玩家是否领先超过 3 目 → 触发追分模式（最强力落子）
+    const playerColor = -color; // AI 的对手
+    const currentScore = engine.score();
+    const playerLead = playerColor === 1
+      ? currentScore.black - currentScore.white
+      : currentScore.white - currentScore.black;
+
+    let move;
+    if (playerLead > 3 && engine.moveCount > 20) {
+      // 追分模式：忽略难度限制，全力以赴
+      move = this._strongMove(engine, legalMoves, 10);
+    } else if (effectiveDiff <= 3) {
+      move = this._heuristicMove(engine, legalMoves, 0.6);
     } else {
       move = this._strongMove(engine, legalMoves, effectiveDiff);
     }
@@ -88,8 +107,17 @@ class GoAI {
       if (opening) return opening;
     }
 
-    // === 第五优先：MCTS + 强启发式 ===
-    const simCount = 30 + difficulty * 12;
+    // === 第五优先：收官阶段地盘争夺 ===
+    const boardSize = n * n;
+    const fillRate = engine.moveCount / boardSize;
+    if (fillRate > 0.4 && difficulty >= 5) {
+      const endgame = this._endgameMove(engine, color, moves);
+      if (endgame) return endgame;
+    }
+
+    // === 第六优先：MCTS + 强启发式 ===
+    // 提升模拟次数，确保 AI 有足够搜索深度
+    const simCount = 40 + difficulty * 15;
     return this._mctsMove(engine, moves, simCount, difficulty);
   }
 
@@ -239,6 +267,52 @@ class GoAI {
     return null;
   }
 
+  // 收官阶段：寻找边界地盘争夺点（阻止玩家扩张）
+  _endgameMove(engine, color, moves) {
+    const opp = -color;
+    const n = engine.size;
+    let bestMove = null;
+    let bestScore = 0;
+
+    for (const [r, c] of moves) {
+      let score = 0;
+      // 检查此点是否能阻止对方扩张地盘
+      for (let dr = -2; dr <= 2; dr++) {
+        for (let dc = -2; dc <= 2; dc++) {
+          const nr = r + dr, nc = c + dc;
+          if (!engine.inBounds(nr, nc)) continue;
+          const dist = Math.abs(dr) + Math.abs(dc);
+          if (dist === 0) continue;
+          // 附近有对方棋子且周围有空点 → 高价值
+          if (engine.board[nr][nc] === opp) {
+            score += 3 / dist;
+          }
+          // 附近是空点且靠近对方势力 → 争夺价值
+          if (engine.board[nr][nc] === 0) {
+            score += 1 / (dist + 1);
+          }
+        }
+      }
+      // 模拟落子后的地盘变化
+      const sim = engine.clone();
+      const res = sim.place(r, c);
+      if (!res.ok) continue;
+      const before = engine.score();
+      const after = sim.score();
+      const aiColorName = color === 1 ? 'black' : 'white';
+      const oppColorName = color === 1 ? 'white' : 'black';
+      const gain = (after[aiColorName] - before[aiColorName]) - (after[oppColorName] - before[oppColorName]);
+      score += gain * 4;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestMove = [r, c];
+      }
+    }
+    // 只有明显有价值时才返回（避免乱走）
+    return bestScore > 3 ? bestMove : null;
+  }
+
   _getStarPoints(n) {
     if (n === 9) return [[2,2],[2,6],[6,2],[6,6],[4,4]];
     if (n === 13) return [[3,3],[3,9],[9,3],[9,9],[3,6],[9,6],[6,3],[6,9],[6,6]];
@@ -321,16 +395,18 @@ class GoAI {
     return best;
   }
 
-  // 快速随机模拟
+  // 快速随机模拟（高难度时使用更强的智能选择）
   _simulate(engine, color, difficulty) {
     const maxMoves = engine.size * engine.size * 1.5;
     let moves = 0;
+    // 难度越高，智能选择概率越高（难度10时接近100%智能）
+    const smartProb = Math.min(0.95, 0.5 + difficulty * 0.05);
     while (!engine.gameOver && moves < maxMoves) {
       const lm = engine.getLegalMoves(engine.turn);
       if (lm.length === 0) { engine.pass(); continue; }
 
       let chosen;
-      if (difficulty >= 6 && Math.random() < 0.7) {
+      if (Math.random() < smartProb) {
         chosen = this._smartSimPick(engine, lm);
       } else {
         chosen = lm[Math.floor(Math.random() * lm.length)];
@@ -425,8 +501,8 @@ class GoAI {
       if ((r === 0 || r === n - 1) && (c === 0 || c === n - 1)) score -= 6; // 角落更差
     }
 
-    // 8. 随机扰动（根据难度）
-    const jitter = Math.max(0, 6 - this.difficulty) * 2;
+    // 8. 随机扰动（根据难度，但最大扰动限制在 6，避免走出明显坏棋）
+    const jitter = Math.max(0, Math.min(6, (5 - this.difficulty) * 1.5));
     score += (Math.random() - 0.5) * jitter;
 
     return score;
