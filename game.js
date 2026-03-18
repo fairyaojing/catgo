@@ -429,8 +429,9 @@ if (this.isAITurn || this.engine.gameOver) return;
     const isPlayerWin = (s.winner === 'black' && this.playerColor === 1) ||
                         (s.winner === 'white' && this.playerColor === -1);
 
-    // 记录结果用于自适应
-    this.ai.recordResult(!isPlayerWin);
+// 记录结果用于自适应（传入分差，让 AI 感知玩家赢了多少目）
+const scoreDiff = isPlayerWin ? s.diff : -s.diff;
+this.ai.recordResult(!isPlayerWin, scoreDiff);
 
     const title = isPlayerWin ? '🎉 你赢了！' : '😿 AI 获胜';
     const desc = `${winnerName}胜，差距 ${s.diff} 目（黑 ${s.black.toFixed(1)} : 白 ${s.white.toFixed(1)}，贴目 ${this.engine.komi}）`;
