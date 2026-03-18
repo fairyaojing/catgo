@@ -86,6 +86,12 @@ const Game = {
     const size = settings.size;
     this.playerColor = settings.color === 'black' ? 1 : -1;
     this.aiColor = -this.playerColor;
+    this.isAITurn = false;
+    this.hoverPos = null;
+    this.hintPos = null;
+
+    // 关闭上局结束弹窗
+    document.getElementById('game-overlay').classList.add('hidden');
 
     this.engine = new GoEngine(size, settings.komi);
     this.ai = new GoAI(settings.difficulty);
@@ -105,6 +111,12 @@ const Game = {
     if (this.playerColor === -1) {
       setTimeout(() => this._aiMove(), 500);
     }
+  },
+
+  // 用当前设置直接重开一局（不经过设置页）
+  restart() {
+    this.init(this.settings);
+    this._drawSideIcons();
   },
 
   onShow() {
