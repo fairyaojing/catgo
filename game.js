@@ -256,8 +256,8 @@ this.engine.gameOver = true;
 this._showGameOver();
 },
 
-requestHint()
-    if (this.isAITurn || this.engine.gameOver) return;
+requestHint() {
+if (this.isAITurn || this.engine.gameOver) return;
     if (this.engine.turn !== this.playerColor) return;
 
     const hintAI = new GoAI(Math.min(10, this.settings.difficulty + 2));
